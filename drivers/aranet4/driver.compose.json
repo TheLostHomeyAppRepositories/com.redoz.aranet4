@@ -1,0 +1,40 @@
+{
+  "name": {
+    "en": "Aranet4"
+  },
+  "class": "sensor",
+  "capabilities": [
+    "measure_battery",
+    "measure_co2",
+    "measure_humidity",
+    "measure_pressure",
+    "measure_temperature"
+  ],
+  "energy": {
+    "batteries": [
+      "AA",
+      "AA"
+    ]
+  },
+  "platforms": [
+    "local"
+  ],
+  "connectivity": [
+    "ble"
+  ],
+  "images": {
+    "small": "{{driverAssetsPath}}/images/small.png",
+    "large": "{{driverAssetsPath}}/images/large.png"
+  },
+  "pair": [
+    {
+      "id": "list_devices",
+      "template": "list_devices",
+      "navigation": { "next": "add_devices" }
+    },
+    {
+      "id": "add_devices",
+      "template": "add_devices"
+    }
+  ]  
+}

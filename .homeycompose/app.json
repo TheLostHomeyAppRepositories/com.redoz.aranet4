@@ -1,0 +1,30 @@
+{
+  "id": "com.redoz.aranet4",
+  "version": "1.0.0",
+  "compatibility": ">=5.0.0",
+  "sdk": 3,
+  "platforms": [
+    "local"
+  ],
+  "name": {
+    "en": "Aranet4"
+  },
+  "description": {
+    "en": "Adds support for Aranet4"
+  },
+  "category": [
+    "climate"
+  ],
+  "permissions": [
+    "homey:wireless:ble"
+  ],
+  "images": {
+    "small": "/assets/images/small.png",
+    "large": "/assets/images/large.png"
+  },
+  "author": {
+    "name": "Patrik Husfloen",
+    "email": "redoz@redoz.com"
+  },
+  "brandColor": "#ef7a1a"
+}

@@ -1,14 +1,14 @@
 import Homey from 'homey';
 
-class MyApp extends Homey.App {
+class Aranet4App extends Homey.App {
 
   /**
    * onInit is called when the app is initialized.
    */
   async onInit() {
-    this.log('MyApp has been initialized');
+    this.log('Aranet4App is initalized');
   }
 
 }
 
-module.exports = MyApp;
+module.exports = Aranet4App;
