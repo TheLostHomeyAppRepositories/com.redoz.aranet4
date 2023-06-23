@@ -1,1 +1,2 @@
-Adds support for Aranet4
+The Aranet4 air quality monitor can help you keep the indoor air healthy. Good air quality helps people maintain their general well-being, comfort, and productivity.
+Additionally, CO2 monitoring can be a good proxy of the ventilation of a shared indoor space. CO2 is a gas produced when we exhale, so its concentration can be a good indicator of insufficient ventilation, as well as aerosols and possibly virus particles potentially lingering in the air.
