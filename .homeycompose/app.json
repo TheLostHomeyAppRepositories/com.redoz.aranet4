@@ -26,5 +26,9 @@
     "name": "Patrik Husfloen",
     "email": "redoz@redoz.com"
   },
-  "brandColor": "#ef7a1a"
+  "brandColor": "#ef7a1a",
+  "bugs": {
+    "url": "https://github.com/redoz/com.redoz.aranet4/issues"
+  },
+  "source": "https://github.com/redoz/com.redoz.aranet4"
 }
