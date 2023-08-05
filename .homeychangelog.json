@@ -7,5 +7,8 @@
   },
   "0.1.2": {
     "en": "Updated readme"
+  },
+  "0.2.0": {
+    "en": "Show device information in settings panel"
   }
 }
