@@ -55,25 +55,25 @@ interface DeviceSettings {
 }
 
 class Aranet4Device extends Homey.Device {
-  
+
   private _interval: NodeJS.Timeout | undefined;
-  private _lastDeviceInformationCheck = new Date(1970,1,1,0,0,0,0)
-  private _successiveErrors : number = 0;
+  private _lastDeviceInformationCheck = new Date(1970, 1, 1, 0, 0, 0, 0)
+  private _successiveErrors: number = 0;
 
 
   /**
    * onInit is called when the device is initialized.
    */
   async onInit() {
-    await this.refresh();    
+    await this.refresh();
     this.log('Aranet4 has been initialized');
   }
 
-  async getBackOffDelay() : Promise<number> {
-    var ret = (this._successiveErrors+1) * CONNECTION_RETRY_BACK_OFF_MULTIPLIER;
+  async getBackOffDelay(): Promise<number> {
+    var ret = (this._successiveErrors + 1) * CONNECTION_RETRY_BACK_OFF_MULTIPLIER;
     if (ret > CONNECTION_RETRY_BACK_OFF_MAX)
-      ret =  CONNECTION_RETRY_BACK_OFF_MAX;
-    else 
+      ret = CONNECTION_RETRY_BACK_OFF_MAX;
+    else
       this._successiveErrors++;
 
     if (ret > SET_UNAVAILABLE_AFTER)
@@ -90,7 +90,7 @@ class Aranet4Device extends Homey.Device {
   async refresh() {
     try {
       var sensorReadings = await this.readDataFromDevice();
-      
+
       if (sensorReadings) {
         await this.resetBackOff();
 
@@ -102,16 +102,16 @@ class Aranet4Device extends Homey.Device {
         await this.setCapabilityValue('measure_battery', sensorReadings.battery)
 
         var refreshDelay = sensorReadings.measurementInterval - sensorReadings.measurementsAge + REFRESH_DELAY;
-        var settings : Partial<DeviceSettings> = {
+        var settings: Partial<DeviceSettings> = {
           measurement_interval: (sensorReadings.measurementInterval / 60) + " minutes" // yeah, all english, all the way
         };
         await this.setSettings(settings);
         this.log(`Refresh rate is ${sensorReadings.measurementInterval}s, sensor reading age is ${sensorReadings.measurementsAge}s, refreshing in ${refreshDelay}s`);
-        
+
         this._interval = this.homey.setTimeout(() => this.refresh(), refreshDelay * 1000);
-        
+
         return;
-      } 
+      }
     } catch (err) {
       this.error("An unhandled error occured", err);
     }
@@ -119,13 +119,13 @@ class Aranet4Device extends Homey.Device {
     this._interval = this.homey.setTimeout(() => this.refresh(), await this.getBackOffDelay());
   }
 
-  async readDataFromDevice() : Promise<Aranet4Data | undefined>  {
-    var peripheral : BlePeripheral | undefined;
+  async readDataFromDevice(): Promise<Aranet4Data | undefined> {
+    var peripheral: BlePeripheral | undefined;
     try {
-      this.log("Attempting to find Aranet with id: " + this.getStore().peripheralUuid + " (timeout: " + BLE_FIND_TIMEOUT + "ms)");      
+      this.log("Attempting to find Aranet with id: " + this.getStore().peripheralUuid + " (timeout: " + BLE_FIND_TIMEOUT + "ms)");
       var advertisement = await this.homey.ble.find(this.getStore().peripheralUuid, BLE_FIND_TIMEOUT);
 
-      var settings : Partial<DeviceSettings> = {
+      var settings: Partial<DeviceSettings> = {
         name: advertisement.localName
       };
       await this.setSettings(settings);
@@ -138,19 +138,15 @@ class Aranet4Device extends Homey.Device {
       var deviceInfoAge = Date.now() - this._lastDeviceInformationCheck.valueOf();
       if (deviceInfoAge > DEVICE_INFORMATION_UPDATE_INTERVAL) {
         this.log("Attempting to update device info");
-        try {
-          await this.updateDeviceInfo(peripheral);
-          this._lastDeviceInformationCheck = new Date();
-        } catch (ex) {
-          this.error("Failed to update device info", ex);
-        }
+        await this.updateDeviceInfo(peripheral);
+        this._lastDeviceInformationCheck = new Date();
       } else {
         this.log("Device info update scheduled in " + Math.round((DEVICE_INFORMATION_UPDATE_INTERVAL - deviceInfoAge) / (60 * 1000)) + " minutes");
       }
 
       this.log("Attempting to find peripheral service");
       let services = await peripheral.discoverServices();
-      
+
       let service = services.find(service => DATA_SERVICE_UUID_LIST.includes(service.uuid));
 
       if (!service) {
@@ -158,10 +154,10 @@ class Aranet4Device extends Homey.Device {
         // early exit to avoid nesting
         return;
       }
-      
+
       this.log("Attempting to find service characteristics");
       let characteristics = await service.discoverCharacteristics([DATA_CHARACTERISTIC_UUID]);
-      
+
       if (characteristics.length != 1) {
         this.error("Failed to find service characteristics");
         // early exit to avoid nesting
@@ -173,7 +169,7 @@ class Aranet4Device extends Homey.Device {
 
       const PAYLOAD_LENGTH = 13;
 
-      if (sensorData.byteLength != PAYLOAD_LENGTH ) {
+      if (sensorData.byteLength != PAYLOAD_LENGTH) {
         this.error(`Expected ${PAYLOAD_LENGTH} bytes but received ${sensorData.byteLength} bytes of sensor data`);
         // early exit to avoid nesting
         return;
@@ -190,8 +186,7 @@ class Aranet4Device extends Homey.Device {
       };
 
     } catch (err) {
-      if (peripheral && !peripheral.isConnected)
-      {
+      if (peripheral && !peripheral.isConnected) {
         this.log("Device disconnected while attempting to read data");
       } else {
         this.error(`An unexpected error occured`, err);
@@ -208,7 +203,7 @@ class Aranet4Device extends Homey.Device {
       }
     }
   }
-  
+
   /**
    * onAdded is called when the user adds the device, called just after pairing.
    */
@@ -275,52 +270,48 @@ class Aranet4Device extends Homey.Device {
   }
 
   async updateDeviceInfo(peripheral: BlePeripheral) {
-    try {
-      const service = await peripheral.getService(BLUETOOTH_DEVICEINFO_SERVICE);
-        
-      var characteristics = await service.discoverCharacteristics(BLUETOOTH_CHARACTERISTICS);
-      
-      if (characteristics.length === 0) {
-        return;
-      }
-      const decoder = new TextDecoder('utf8');
-      let settings : Partial<DeviceSettings> = {};
-      for (let index = 0; index < characteristics.length; index++) {
-        const c = characteristics[index];
-        const data = await c.read();
-        const value = decoder.decode(data);
-        
-        switch (c.uuid) {
-          case MANUFACTURER_NAME.id:
-            this.log(`Manufacturer: ${value}`);
-            settings.manufacturer = value;
-            break;
-          case MODEL_NUMBER.id:
-            this.log(`Model number: ${value}`);
-            settings.model = value;
-            break;
-          case SERIAL_NUMBER.id:
-            this.log(`Serial number: ${value}`);
-            settings.serial_number = value;
-            break;
-          case HARDWARE_REVISION.id:
-            this.log(`Hardware revision: ${value}`);
-            settings.hardware_revision = value;
-            break;
-          case FIRMWARE_REVISION.id:
-            this.log(`Firmware revision: ${value}`);
-            settings.firmware_version = value;
-            break;
-          case SOFTWARE_REVISION.id:
-            this.log(`Software revision: ${value}`);
-            settings.software_version = value;
-            break;
-        }
-      }
-      await this.setSettings(settings);
-    } catch(err) {
-      this.error("An error occured while fetching device info", err);
+    const service = await peripheral.getService(BLUETOOTH_DEVICEINFO_SERVICE);
+
+    var characteristics = await service.discoverCharacteristics(BLUETOOTH_CHARACTERISTICS);
+
+    if (characteristics.length === 0) {
+      return;
     }
+    const decoder = new TextDecoder('utf8');
+    let settings: Partial<DeviceSettings> = {};
+    for (let index = 0; index < characteristics.length; index++) {
+      const c = characteristics[index];
+      const data = await c.read();
+      const value = decoder.decode(data);
+
+      switch (c.uuid) {
+        case MANUFACTURER_NAME.id:
+          this.log(`Manufacturer: ${value}`);
+          settings.manufacturer = value;
+          break;
+        case MODEL_NUMBER.id:
+          this.log(`Model number: ${value}`);
+          settings.model = value;
+          break;
+        case SERIAL_NUMBER.id:
+          this.log(`Serial number: ${value}`);
+          settings.serial_number = value;
+          break;
+        case HARDWARE_REVISION.id:
+          this.log(`Hardware revision: ${value}`);
+          settings.hardware_revision = value;
+          break;
+        case FIRMWARE_REVISION.id:
+          this.log(`Firmware revision: ${value}`);
+          settings.firmware_version = value;
+          break;
+        case SOFTWARE_REVISION.id:
+          this.log(`Software revision: ${value}`);
+          settings.software_version = value;
+          break;
+      }
+    }
+    await this.setSettings(settings);
   }
 
 }
