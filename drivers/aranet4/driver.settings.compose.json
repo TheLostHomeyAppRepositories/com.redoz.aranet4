@@ -1,0 +1,77 @@
+[
+  {
+    "id": "measurement_interval",
+    "type": "label",
+    "label": {
+      "en": "Measurement interval"
+    },
+    "value": "",
+    "hint": {
+      "en": "This value can be changed in the mobile app."
+    }
+  },
+  {
+    "type": "group",
+    "label": {
+      "en": "Device information"
+    },
+    "children": [
+      {
+        "id": "name",
+        "type": "label",
+        "label": {
+          "en": "Name"
+        },
+        "value": ""
+      },
+      {
+        "id": "manufacturer",
+        "type": "label",
+        "label": {
+          "en": "Manufacturer"
+        },
+        "value": ""
+      },
+      {
+        "id": "model",
+        "type": "label",
+        "label": {
+          "en": "Model"
+        },
+        "value": ""
+      },
+      {
+        "id": "serial_number",
+        "type": "label",
+        "label": {
+          "en": "Serial number"
+        },
+        "value": ""
+      },
+      {
+        "id": "hardware_revision",
+        "type": "label",
+        "label": {
+          "en": "Hardware revision"
+        },
+        "value": ""
+      },
+      {
+        "id": "firmware_version",
+        "type": "label",
+        "label": {
+          "en": "Firmware version"
+        },
+        "value": ""
+      },
+      {
+        "id": "software_version",
+        "type": "label",
+        "label": {
+          "en": "Software version"
+        },
+        "value": ""
+      }
+    ]
+  }
+]

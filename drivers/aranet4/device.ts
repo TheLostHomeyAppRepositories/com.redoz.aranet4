@@ -1,9 +1,11 @@
 import Homey, { BleAdvertisement, BlePeripheral } from 'homey';
 
+const BLE_FIND_TIMEOUT = 15000; // 15 seconds
 const REFRESH_DELAY = 10; // give the device 10 seconds extra before requesting data
 const CONNECTION_RETRY_BACK_OFF_MULTIPLIER = 5;
 const CONNECTION_RETRY_BACK_OFF_MAX = 300;
 const SET_UNAVAILABLE_AFTER = 120;
+const DEVICE_INFORMATION_UPDATE_INTERVAL = 24 * 60 * 60 * 1000;  // 24 hours * 60 minutes * 60 seconds * 1000 milliseconds
 
 const DATA_SERVICE_UUID_LIST = [
   "f0cd140095da4f4b9ac8aa55d312af0c",
@@ -36,22 +38,34 @@ interface Aranet4Data {
   pressure: number;
   temperature: number;
   co2: number;
-  refreshInterval: number;
-  readingsAge: number;
+  measurementInterval: number;
+  measurementsAge: number;
+}
+
+interface DeviceSettings {
+  measurement_interval: string;
+  // device information
+  name: string;
+  manufacturer: string;
+  serial_number: string;
+  model: string;
+  hardware_revision: string;
+  firmware_version: string;
+  software_version: string;
 }
 
 class Aranet4Device extends Homey.Device {
+  
   private _interval: NodeJS.Timeout | undefined;
-  private _init : boolean = false
+  private _lastDeviceInformationCheck = new Date(1970,1,1,0,0,0,0)
   private _successiveErrors : number = 0;
+
 
   /**
    * onInit is called when the device is initialized.
    */
   async onInit() {
-    this._init = true;
-    await this.refresh();
-    this._init = false;
+    await this.refresh();    
     this.log('Aranet4 has been initialized');
   }
 
@@ -87,8 +101,12 @@ class Aranet4Device extends Homey.Device {
         await this.setCapabilityValue('measure_humidity', sensorReadings.humidity)
         await this.setCapabilityValue('measure_battery', sensorReadings.battery)
 
-        var refreshDelay = sensorReadings.refreshInterval - sensorReadings.readingsAge + REFRESH_DELAY;
-        this.log(`Refresh rate is ${sensorReadings.refreshInterval}s, sensor reading age is ${sensorReadings.readingsAge}s, refreshing in ${refreshDelay}s`);
+        var refreshDelay = sensorReadings.measurementInterval - sensorReadings.measurementsAge + REFRESH_DELAY;
+        var settings : Partial<DeviceSettings> = {
+          measurement_interval: (sensorReadings.measurementInterval / 60) + " minutes" // yeah, all english, all the way
+        };
+        await this.setSettings(settings);
+        this.log(`Refresh rate is ${sensorReadings.measurementInterval}s, sensor reading age is ${sensorReadings.measurementsAge}s, refreshing in ${refreshDelay}s`);
         
         this._interval = this.homey.setTimeout(() => this.refresh(), refreshDelay * 1000);
         
@@ -104,16 +122,30 @@ class Aranet4Device extends Homey.Device {
   async readDataFromDevice() : Promise<Aranet4Data | undefined>  {
     var peripheral : BlePeripheral | undefined;
     try {
-      this.log("Attempting to find Aranet with id: " + this.getStore().peripheralUuid);      
-      var advertisement = await this.homey.ble.find(this.getStore().peripheralUuid);
+      this.log("Attempting to find Aranet with id: " + this.getStore().peripheralUuid + " (timeout: " + BLE_FIND_TIMEOUT + "ms)");      
+      var advertisement = await this.homey.ble.find(this.getStore().peripheralUuid, BLE_FIND_TIMEOUT);
+
+      var settings : Partial<DeviceSettings> = {
+        name: advertisement.localName
+      };
+      await this.setSettings(settings);
 
       this.log(`Aranet4 device found (${advertisement.localName}), attempting to connect...`);
       peripheral = await advertisement.connect();
 
       this.log(`Successfully connected to Aranet4 device (${advertisement.localName})`);
 
-      if (this._init) {
-        await this.logPeripheralInfo(peripheral);
+      var deviceInfoAge = Date.now() - this._lastDeviceInformationCheck.valueOf();
+      if (deviceInfoAge > DEVICE_INFORMATION_UPDATE_INTERVAL) {
+        this.log("Attempting to update device info");
+        try {
+          await this.updateDeviceInfo(peripheral);
+          this._lastDeviceInformationCheck = new Date();
+        } catch (ex) {
+          this.error("Failed to update device info", ex);
+        }
+      } else {
+        this.log("Device info update scheduled in " + Math.round((DEVICE_INFORMATION_UPDATE_INTERVAL - deviceInfoAge) / (60 * 1000)) + " minutes");
       }
 
       this.log("Attempting to find peripheral service");
@@ -153,12 +185,17 @@ class Aranet4Device extends Homey.Device {
         pressure: sensorData.readUInt16LE(4) / 10,
         humidity: sensorData.readUInt8(6),
         battery: sensorData.readUInt8(7),
-        refreshInterval: sensorData.readUInt16LE(9),
-        readingsAge: sensorData.readUInt16LE(11)
+        measurementInterval: sensorData.readUInt16LE(9),
+        measurementsAge: sensorData.readUInt16LE(11)
       };
 
     } catch (err) {
-      this.error(`An unexpected error occured`, err);
+      if (peripheral && !peripheral.isConnected)
+      {
+        this.log("Device disconnected while attempting to read data");
+      } else {
+        this.error(`An unexpected error occured`, err);
+      }
     } finally {
       if (peripheral && peripheral.isConnected) {
         this.log(`Attempting to disconnect Aranet4 device`);
@@ -213,6 +250,15 @@ class Aranet4Device extends Homey.Device {
     this.log('Aranet4 has been uninitizalied');
   }
 
+  getSetting(arg: any) {
+    this.log('Settings were requested!!!!!!!!!!!!!!!!!!!!!!!!!!');
+    return super.getSetting(arg);
+  }
+
+  getSettings() {
+    this.log('Settings were requested!!!!!!!!!!!!!!!!!!!!!!!!!!');
+    return super.getSettings();
+  }
   /**
    * onDeleted is called when the user deleted the device.
    */
@@ -228,7 +274,7 @@ class Aranet4Device extends Homey.Device {
     }
   }
 
-  async logPeripheralInfo(peripheral: BlePeripheral) {
+  async updateDeviceInfo(peripheral: BlePeripheral) {
     try {
       const service = await peripheral.getService(BLUETOOTH_DEVICEINFO_SERVICE);
         
@@ -238,31 +284,40 @@ class Aranet4Device extends Homey.Device {
         return;
       }
       const decoder = new TextDecoder('utf8');
+      let settings : Partial<DeviceSettings> = {};
       for (let index = 0; index < characteristics.length; index++) {
         const c = characteristics[index];
         const data = await c.read();
         const value = decoder.decode(data);
+        
         switch (c.uuid) {
           case MANUFACTURER_NAME.id:
             this.log(`Manufacturer: ${value}`);
+            settings.manufacturer = value;
             break;
           case MODEL_NUMBER.id:
             this.log(`Model number: ${value}`);
+            settings.model = value;
             break;
           case SERIAL_NUMBER.id:
             this.log(`Serial number: ${value}`);
+            settings.serial_number = value;
             break;
           case HARDWARE_REVISION.id:
             this.log(`Hardware revision: ${value}`);
+            settings.hardware_revision = value;
             break;
           case FIRMWARE_REVISION.id:
             this.log(`Firmware revision: ${value}`);
+            settings.firmware_version = value;
             break;
           case SOFTWARE_REVISION.id:
             this.log(`Software revision: ${value}`);
+            settings.software_version = value;
             break;
         }
       }
+      await this.setSettings(settings);
     } catch(err) {
       this.error("An error occured while fetching device info", err);
     }
