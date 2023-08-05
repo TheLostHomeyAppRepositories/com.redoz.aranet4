@@ -21,7 +21,8 @@
   ],
   "images": {
     "small": "/assets/images/small.png",
-    "large": "/assets/images/large.png"
+    "large": "/assets/images/large.png",
+    "xlarge": "/assets/images/xlarge.png"
   },
   "author": {
     "name": "Patrik Husfloen",
@@ -59,7 +60,8 @@
       ],
       "images": {
         "small": "/drivers/aranet4/assets/images/small.png",
-        "large": "/drivers/aranet4/assets/images/large.png"
+        "large": "/drivers/aranet4/assets/images/large.png",
+        "xlarge": "/drivers/aranet4/assets/images/xlarge.png"
       },
       "pair": [
         {
