@@ -10,5 +10,8 @@
   },
   "0.2.0": {
     "en": "Show device information in settings panel"
+  },
+  "0.2.1": {
+    "en": "Updated device images"
   }
 }
