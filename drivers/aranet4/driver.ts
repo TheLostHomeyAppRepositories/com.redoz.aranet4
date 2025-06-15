@@ -7,7 +7,7 @@ const DATA_SERVICE_UUID_LIST = [
 
 const DATA_CHARACTERISTIC_UUID = "f0cd300195da4f4b9ac8aa55d312af0c";
 
-class Aranet4Driver extends Homey.Driver {
+export class Aranet4Driver extends Homey.Driver {
   /**
    * onInit is called when the driver is initialized.
    */
@@ -17,19 +17,26 @@ class Aranet4Driver extends Homey.Driver {
     this.log('Aranet4Driver has been initialized');
   }
 
+  async discoverAranetDevices() : Promise<Homey.BleAdvertisement[]> {
+    this.log('Discovering BLE devices...');
+    const advertisements = await this.homey.ble.discover(undefined);
+
+    var aranetAdvertisements = advertisements
+      .filter(advertisement => advertisement.localName !== undefined && advertisement.serviceUuids.some(uuid => DATA_SERVICE_UUID_LIST.includes(uuid)));
+
+    this.log("aranetAdvertisements", aranetAdvertisements);
+
+    return aranetAdvertisements;
+  }
+
   /**
    * onPairListDevices is called when a user is adding a device and the 'list_devices' view is called.
    * This should return an array with the data of devices that are available for pairing.
    */
   async onPairListDevices() {
-    this.log('Discovering BLE devices...');
-    const advertisements = await this.homey.ble.discover(undefined, 30000);
+    const advertisements = await this.discoverAranetDevices();
 
-    this.log("advertisments", advertisements);
-
-    return advertisements
-      .filter(advertisement => advertisement.localName !== undefined && advertisement.serviceUuids.some(uuid => DATA_SERVICE_UUID_LIST.includes(uuid)))
-      .map(advertisement => {
+    return advertisements.map(advertisement => {
         this.log("gotcha", advertisement);
         return {
           name: advertisement.localName,
@@ -37,7 +44,7 @@ class Aranet4Driver extends Homey.Driver {
             id: advertisement.uuid,
           },
           store: {
-            peripheralUuid: advertisement.uuid,
+            peripheralUuid: advertisement.uuid
           }
         };
       });

@@ -1,10 +1,10 @@
 import Homey, { BleAdvertisement, BlePeripheral } from 'homey';
+import {Aranet4Driver} from './driver'
 
-const BLE_FIND_TIMEOUT = 15000; // 15 seconds
 const REFRESH_DELAY = 10; // give the device 10 seconds extra before requesting data
 const CONNECTION_RETRY_BACK_OFF_MULTIPLIER = 5;
 const CONNECTION_RETRY_BACK_OFF_MAX = 300;
-const SET_UNAVAILABLE_AFTER = 120;
+const SET_UNAVAILABLE_AFTER = 60 * 1000;
 const DEVICE_INFORMATION_UPDATE_INTERVAL = 24 * 60 * 60 * 1000;  // 24 hours * 60 minutes * 60 seconds * 1000 milliseconds
 
 const DATA_SERVICE_UUID_LIST = [
@@ -57,16 +57,61 @@ interface DeviceSettings {
 class Aranet4Device extends Homey.Device {
 
   private _interval: NodeJS.Timeout | undefined;
-  private _lastDeviceInformationCheck = new Date(1970, 1, 1, 0, 0, 0, 0)
+  private _lastDeviceInformationCheck = new Date(1970, 1, 1, 0, 0, 0, 0);
   private _successiveErrors: number = 0;
+  private _expectedRefreshAt = new Date();
 
+  private async setLastSeen() {
+    await this.setStoreValue("lastSeen", new Date().toISOString()).catch(this.error);
+  }
+
+  private getLastSeen() : Date {
+    return new Date(this.getStoreValue("lastSeen"));
+  }
+
+  private async setAvailability(available : boolean) {
+    if (available === true) {
+      await this.setAvailable();
+    } else {
+      const lastSeen = this.getLastSeen();
+      const durationSinceLastSeen = Date.now() - lastSeen.valueOf();
+      const humanReadableDuration = this.humanize(durationSinceLastSeen);
+      this.log(`Device last seen ${humanReadableDuration} (${lastSeen})`)
+      await this.setUnavailable(this.homey.__('errors.device_unavailable', {"last_seen": humanReadableDuration})).catch(this.error);
+    }
+  }
 
   /**
    * onInit is called when the device is initialized.
    */
   async onInit() {
+    if (this.getStoreKeys().find(key => key === "lastSeen") === undefined) {
+      // fill this for first init and bw compat
+      await this.setLastSeen();
+    }
+    await this.setAvailability(false);
     await this.refresh();
     this.log('Aranet4 has been initialized');
+  }
+
+  private humanize(ms: number, locale = 'en'): string {
+    const rtf = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' });
+  
+    const table: [Intl.RelativeTimeFormatUnit, number][] = [
+      ['year',   3.154e10],   // 365 d
+      ['month',  2.628e9],    // 30 d
+      ['week',   6.048e8],    // 7 d
+      ['day',    8.64e7],
+      ['hour',   3.6e6],
+      ['minute', 6e4],
+      ['second', 1e3],
+    ];
+  
+    for (const [unit, size] of table) {
+      const value = Math.floor(ms / size);
+      if (Math.abs(value) >= 1) return rtf.format(-value, unit);
+    }
+    return 'just now';
   }
 
   async getBackOffDelay(): Promise<number> {
@@ -76,14 +121,19 @@ class Aranet4Device extends Homey.Device {
     else
       this._successiveErrors++;
 
-    if (ret > SET_UNAVAILABLE_AFTER)
-      await this.setUnavailable(this.homey.__('errors.device_unavailable'));
+    const refreshOverdue = Date.now() - this._expectedRefreshAt.valueOf();
+    this.log(`Refresh overdue by ${(refreshOverdue / 1000).toFixed(0)}s`)
+    if (refreshOverdue > SET_UNAVAILABLE_AFTER) {
+      await this.setAvailability(false);
+      this.log("Device unavailable");
+    }
 
-    return ret * 1000;
+    return ret;
   }
 
   async resetBackOff() {
-    await this.setAvailable();
+    await this.setAvailability(true);
+    this.log("Device available");
     this._successiveErrors = 0;
   }
 
@@ -92,6 +142,7 @@ class Aranet4Device extends Homey.Device {
       var sensorReadings = await this.readDataFromDevice();
 
       if (sensorReadings) {
+        await this.setLastSeen();
         await this.resetBackOff();
 
         this.log("Updating device values")
@@ -107,7 +158,8 @@ class Aranet4Device extends Homey.Device {
         };
         await this.setSettings(settings);
         this.log(`Refresh rate is ${sensorReadings.measurementInterval}s, sensor reading age is ${sensorReadings.measurementsAge}s, refreshing in ${refreshDelay}s`);
-
+        this._expectedRefreshAt = new Date();
+        this._expectedRefreshAt.setSeconds(this._expectedRefreshAt.getSeconds() + refreshDelay);
         this._interval = this.homey.setTimeout(() => this.refresh(), refreshDelay * 1000);
 
         return;
@@ -115,15 +167,29 @@ class Aranet4Device extends Homey.Device {
     } catch (err) {
       this.error("An unhandled error occured", err);
     }
+    var refreshDelay = await this.getBackOffDelay();
+    this.error(`Failed to update device values, refreshing in ${refreshDelay}s`);
 
-    this._interval = this.homey.setTimeout(() => this.refresh(), await this.getBackOffDelay());
+    this._interval = this.homey.setTimeout(() => this.refresh(), refreshDelay * 1000);
   }
 
   async readDataFromDevice(): Promise<Aranet4Data | undefined> {
     var peripheral: BlePeripheral | undefined;
     try {
-      this.log("Attempting to find Aranet with id: " + this.getStore().peripheralUuid + " (timeout: " + BLE_FIND_TIMEOUT + "ms)");
-      var advertisement = await this.homey.ble.find(this.getStore().peripheralUuid, BLE_FIND_TIMEOUT);
+      const peripheralUuid = this.getStore().peripheralUuid;
+      this.log("Attempting to find Aranet with id: " + peripheralUuid);
+      var advertisement : BleAdvertisement | null = null;
+      try {
+        advertisement = await this.homey.ble.find(peripheralUuid);
+      } catch {
+        this.error("Failed to find device with id: " + peripheralUuid + ", attempting rediscovery...")
+        var devices = await (this.driver as Aranet4Driver).discoverAranetDevices();
+        advertisement = devices.find(device => device.uuid == peripheralUuid) || null;
+        if (advertisement === null) {
+          this.error("Failed to find device with id: " + peripheralUuid);
+          return;
+        }
+      }
 
       var settings: Partial<DeviceSettings> = {
         name: advertisement.localName

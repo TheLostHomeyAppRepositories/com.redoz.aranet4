@@ -1,1 +1,5 @@
-{}
+{
+    "errors": {
+        "device_unavailable": "Last seen __last_seen__, attempting to reestablish connection."
+    }
+}
