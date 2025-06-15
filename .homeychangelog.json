@@ -13,5 +13,8 @@
   },
   "0.2.1": {
     "en": "Updated device images"
+  },
+  "0.3.0": {
+    "en": "Added workaround for issue in Homey Pro (Early 2023) where device could not be found after initial discovery."
   }
 }
